@@ -1,0 +1,76 @@
+name: Build and Archive
+
+on:
+  push:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install dependencies on Ubuntu
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libvorbis-dev libpng-dev libjpeg-dev libcurl4-openssl-dev gettext
+      if: runner.os == 'Linux'
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        install: >-
+          make
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-SDL2
+          mingw-w64-x86_64-SDL2_ttf
+          mingw-w64-x86_64-libvorbis
+          mingw-w64-x86_64-libpng
+          mingw-w64-x86_64-libjpeg-turbo
+          mingw-w64-x86_64-curl
+          mingw-w64-x86_64-gettext
+      if: runner.os == 'Windows'
+
+    - name: Install dependencies on macOS
+      run: |
+        brew install sdl2 sdl2_ttf libvorbis libpng jpeg curl gettext
+      if: runner.os == 'macOS'
+
+    - name: Build on Windows
+      run: |
+        msys2 -c "make"
+      if: runner.os == 'Windows'
+
+    - name: Build on Linux/macOS
+      run: make
+      if: runner.os != 'Windows'
+
+    - name: Prepare artifact paths
+      id: prepare
+      shell: bash
+      run: |
+        while IFS= read -r line
+        do
+          if [[ "$line" == /* ]]; then
+            line="${line:1}"
+          else
+            line="**/$line"
+          fi
+          paths+=("$line")
+        done < .gitignore
+        paths=$(IFS=,; echo "${paths[*]}")
+        echo "::set-output name=paths::$paths"
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: production-artifacts
+        path: |
+          ${{ steps.prepare.outputs.paths }}
